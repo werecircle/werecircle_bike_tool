@@ -13,3 +13,8 @@ This tool helps you analyze various characteristics of bicycles using photos. Fo
 ### Example Images
 
 Below are some sample images that demonstrate what the tool can analyze:
+
+![Example 1](./example_images/bike1.JPG)
+![Example 2](./example_images/bike2.JPG)
+![Example 3](./example_images/bike3.JPG)
+![Example 4](./example_images/bike4.JPG)
