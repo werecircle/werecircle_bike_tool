@@ -1,18 +1,15 @@
 # Bike Analysis Tool 🚴
 
-Deze tool helpt je bij het analyseren van verschillende kenmerken van fietsen aan de hand van foto's. Hieronder volgen de stappen om de tool te gebruiken:
+# Bike Analysis Tool 🚴
 
-1. 📤 Klik op de "Kies je foto's" knop om één of meerdere foto's van fietsen te uploaden.
-2. ⏳ Wacht totdat de AI de fiets op de foto analyseert en kenmerken zoals merk, kwaliteit, en type identificeert.
-3. 👀 Bekijk de resultaten die onder elke foto worden getoond.
+This tool helps you analyze various characteristics of bicycles using photos. Follow these steps to use the tool:
 
-**Let op:** Zorg ervoor dat de foto's duidelijk en van goede kwaliteit zijn voor de beste resultaten.
+1. 📤 Click the “Choose your photos” button to upload one or more images of bicycles.
+2. ⏳ Wait for the AI to analyze each bicycle photo and identify features such as brand, condition, and type.
+3. 👀 Review the results shown below each photo.
 
-### Voorbeed foto's
+**Note:** Make sure your photos are clear and high-quality for the best results.
 
-Hieronder staan enkele voorbeeldafbeeldingen die laten zien wat de tool kan analyseren:
+### Example Images
 
-![Voorbeeld 1](example_images/bike1.JPG)
-![Voorbeeld 2](example_images/bike2.JPG)
-![Voorbeeld 3](example_images/bike3.JPG)
-![Voorbeeld 4](example_images/bike4.JPG)
+Below are some sample images that demonstrate what the tool can analyze:
