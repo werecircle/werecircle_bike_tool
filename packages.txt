@@ -1,2 +1,3 @@
 libffi-dev
 build-essential
+python3.13-dev
