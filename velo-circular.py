@@ -242,11 +242,31 @@ tools = [
     }
 ]
 
+import json, tempfile
+
 # --- Firebase Initialization ---
 if not firebase_admin._apps:
-    service_account_info = st.secrets["service_account"]
-    cred = credentials.Certificate(json.loads(service_account_info))
-    firebase_admin.initialize_app(cred, {'storageBucket': 'socs-415712.appspot.com'})
+    svc = st.secrets["service_account"]
+
+    # Normalize to a plain dict
+    if isinstance(svc, str):
+        svc_info = json.loads(svc)  # when secrets stored as a JSON string
+    else:
+        # AttrDict -> dict (and ensure JSON-serializable)
+        svc_info = json.loads(json.dumps(dict(svc)))
+
+    # Write to a temp file because credentials.Certificate reliably accepts a file path
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as f:
+        json.dump(svc_info, f)
+        temp_path = f.name
+
+    cred = credentials.Certificate(temp_path)
+    firebase_admin.initialize_app(
+        cred,
+        {
+            "storageBucket": st.secrets.get("FIREBASE_STORAGE_BUCKET", "socs-415712.appspot.com"),
+        },
+    )
 else:
     firebase_admin.get_app(name='[DEFAULT]')
 
