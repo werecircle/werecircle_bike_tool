@@ -2,6 +2,30 @@ import base64
 import streamlit as st
 import openai
 from openai import OpenAI
+
+# --- OpenAI diagnostics (Checks if the OpenAI connectivity is good or bad, and lists available models) ---
+import streamlit as st
+from openai import OpenAI
+
+def check_openai_connectivity():
+    try:
+        client = OpenAI(api_key=st.secrets["OPENAI_KEY"])  # don't pass proxies here
+        models = client.models.list()
+        ids = [m.id for m in models.data][:10]
+        st.success(f"OpenAI reachable ✅  Visible models: {ids}")
+        return True
+    except Exception as e:
+        st.error(f"OpenAI check failed ❌  {type(e).__name__}: {e}")
+        st.info(
+            "If you see 401 → bad/missing key; 429 → quota/billing; "
+            "404/400 model not found → update the model name you use."
+        )
+        return False
+
+with st.sidebar:
+    if st.button("🔎 Check OpenAI connectivity"):
+        check_openai_connectivity()
+        
 import json
 from jinja2 import Environment, FileSystemLoader
 import pandas as pd
@@ -536,15 +560,39 @@ else:
             )
             st.altair_chart(chart, use_container_width=True)
 
-        def plot_pie_chart(data, column):
-            cd = data[column].value_counts().reset_index()
-            cd.columns = [column, 'Count']
-            total = cd['Count'].sum()
-            pie = alt.Chart(cd).mark_arc().encode(
-                theta=alt.Theta(field="Count", type="quantitative"),
-                tooltip=[alt.Tooltip(column), alt.Tooltip('Count'), alt.Tooltip('Percent', format='.1%')]
-            ).transform_calculate(
-                Percent="datum.Count / {}".format(total)
+
+        def plot_pie_chart(data: pd.DataFrame, column: str):
+            # Guard rails: column present and non-empty counts
+            if column not in data.columns or data[column].dropna().empty:
+                st.info(f"No data for '{column}' yet.")
+                return
+
+            cd = (
+                data[column]
+                    .dropna()
+                    .value_counts()
+                    .rename_axis(column)
+                    .reset_index(name="Count")
+            )
+
+            if cd.empty:
+                st.info(f"No data for '{column}' yet.")
+                return
+
+            pie = (
+                alt.Chart(cd)
+                    .transform_joinaggregate(total='sum(Count)')
+                    .transform_calculate(Percent='datum.Count / datum.total')
+                    .mark_arc()
+                    .encode(
+                    theta=alt.Theta('Count:Q'),
+                    color=alt.Color(f'{column}:N', legend=None),
+                    tooltip=[
+                        alt.Tooltip(f'{column}:N', title='Category'),
+                        alt.Tooltip('Count:Q'),
+                        alt.Tooltip('Percent:Q', format='.1%')
+                    ]
+                )
             )
             st.altair_chart(pie, use_container_width=True)
 
