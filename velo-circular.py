@@ -1,10 +1,11 @@
 import base64
+# --- Streamlit UI ---
 import streamlit as st
-import openai
-from openai import OpenAI
+st.set_page_config(page_title="Bike Analysis Tool", layout="wide")
+st.title(":orange[ Bike Analysis Tool ] 🚴")
 
 # --- OpenAI diagnostics (Checks if the OpenAI connectivity is good or bad, and lists available models) ---
-import streamlit as st
+import openai
 from openai import OpenAI
 
 def check_openai_connectivity():
@@ -426,9 +427,7 @@ def call_gpt_model(base64_image, image_name):
         st.error(f"An error occurred: {e}", icon='🚨')
         return {}
 
-# --- Streamlit UI ---
-st.set_page_config(page_title="Bike Analysis Tool", layout="wide")
-st.title(":orange[ Bike Analysis Tool ] 🚴")
+
 
 # Prepare data download
 df_all = fetch_all_bike_data_from_firestore()
