@@ -4,13 +4,54 @@ import streamlit as st
 st.set_page_config(page_title="Bike Analysis Tool", layout="wide")
 st.title(":orange[ Bike Analysis Tool ] 🚴")
 
+# --- Check to make sure no Proxy can be used
+import os
+for k in ("HTTP_PROXY","HTTPS_PROXY","ALL_PROXY","OPENAI_HTTP_PROXY","OPENAI_PROXY"):
+    os.environ.pop(k, None)
+
+import pkgutil, sys, re, importlib
+
+hits = []
+for m in pkgutil.iter_modules():
+        if m.name.startswith("openai"):
+            mod = importlib.import_module(m.name)
+for path in sys.path:
+        try:
+            # very shallow grep
+            import os
+
+            for root, _, files in os.walk(path):
+                for f in files:
+                    if f.endswith((".py", ".pyi")) and "openai" in root:
+                        p = os.path.join(root, f)
+                        try:
+                            with open(p, "r", errors="ignore") as fh:
+                                txt = fh.read()
+                                if re.search(r"\bproxies\s*=", txt):
+                                    hits.append(p)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+st.write("Possible 'proxies=' references under site-packages:", hits[:50])
+
 # --- OpenAI diagnostics (Checks if the OpenAI connectivity is good or bad, and lists available models) ---
-import openai
+import httpx
+import inspect, openai
 from openai import OpenAI
+
+st.write(
+    "OpenAI SDK version:", getattr(openai, "__version__", "unknown"),
+    " module file:", getattr(openai, "__file__", "unknown"),
+    " OpenAI.__init__ signature:", str(inspect.signature(OpenAI.__init__))
+)
+
+http_client = httpx.Client()  # no proxies
+client = OpenAI(api_key=st.secrets["OPENAI_KEY"], http_client=http_client)
 
 def check_openai_connectivity():
     try:
-        client = OpenAI(api_key=st.secrets["OPENAI_KEY"])  # don't pass proxies here
+        client = OpenAI(api_key=st.secrets["OPENAI_KEY"], http_client=http_client)  # don't pass proxies here
         models = client.models.list()
         ids = [m.id for m in models.data][:10]
         st.success(f"OpenAI reachable ✅  Visible models: {ids}")
