@@ -4,6 +4,25 @@ import streamlit as st
 st.set_page_config(page_title="Bike Analysis Tool", layout="wide")
 st.title(":orange[ Bike Analysis Tool ] 🚴")
 
+# --- Probe who is passing `proxies` to OpenAI() ---
+import traceback, inspect
+import openai as _openai_mod
+from openai import OpenAI as _RealOpenAI
+
+_real_init = _RealOpenAI.__init__
+
+def _spy_init(self, *args, **kwargs):
+    if "proxies" in kwargs:
+        # Surface the offender and their callsite
+        import streamlit as st
+        st.error(f"DEBUG: Someone called OpenAI(proxies=...) with kwargs={kwargs}")
+        st.code("".join(traceback.format_stack(limit=12)))
+    return _real_init(self, *args, **kwargs)
+
+# Monkeypatch to spy on all future OpenAI() instantiations
+_RealOpenAI.__init__ = _spy_init
+_openai_mod.OpenAI = _RealOpenAI  # ensure module attr points to our patched class
+
 # --- Check to make sure no Proxy can be used
 import os
 for k in ("HTTP_PROXY","HTTPS_PROXY","ALL_PROXY","OPENAI_HTTP_PROXY","OPENAI_PROXY"):
