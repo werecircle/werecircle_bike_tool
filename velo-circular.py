@@ -459,10 +459,15 @@ def call_gpt_model(base64_image, image_name):
                     }
                 ],
                 tools=tools,
+                tool_choice="required"
                 temperature=0,
                 max_tokens=300
             )
             msg = response.choices[0].message
+            if not getattr(msg, "tool_calls", None):
+                st.warning("The model replied without a tool call; showing raw text for debugging.")
+                st.code(getattr(msg, "content", ""), language="markdown")
+                return {}
             result = {}
             if msg.tool_calls:
                 for tool_call in msg.tool_calls:
