@@ -459,7 +459,7 @@ def call_gpt_model(base64_image, image_name):
                     }
                 ],
                 tools=tools,
-                tool_choice="required"
+                tool_choice="required",
                 temperature=0,
                 max_tokens=300
             )
