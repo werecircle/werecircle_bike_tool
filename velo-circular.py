@@ -538,19 +538,10 @@ def handle_regeneration(name: str, b64: str, goal: str, image_bytes: bytes | Non
 # Sidebar — Reset / Admin
 # --------------------------------------------------------------------------------------
 with st.sidebar:
-    st.subheader("Reset / Admin")
-    if st.button("↻ Clear session/state"):
-        try:
-            st.cache_data.clear()  # safe even if unused
-        except Exception:
-            pass
-        for k in list(st.session_state.keys()):
-            del st.session_state[k]
-        st.success("Cleared session state and caches. Reload the page.", icon="✅")
 
-    st.markdown("---")
-    st.markdown("**Danger zone**")
-    confirm = st.checkbox("I understand this will permanently delete ALL records.")
+    st.subheader("---")
+    st.subheader("**Page Reset (reset counters and graphs)**")
+    confirm = st.checkbox("I understand this will permanently delete ALL records currently hosted in the tool.")
     if st.button("🗑️ Delete ALL `bike_data` records", disabled=not confirm):
         n = delete_collection("bike_data", batch_size=200)
         st.success(f"Deleted {n} documents from 'bike_data'.", icon="✅")
