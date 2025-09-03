@@ -1,8 +1,10 @@
 # --- Bike Analysis Tool (Enhanced) ---
 # Upgrades:
-# 1) Adds brand_name, bike_color, detailed condition notes, and e‑bike specifics (drive + battery + assist class)
-# 2) Keeps OpenAI v1 SDK (no proxies), Firestore auth flow, Altair guards, single set_page_config
-# 3) Backward compatible with existing fields; safe when tools omit fields
+# 1) Adds brand_name, bike_color, detailed condition notes, and e-bike specifics (drive + battery + assist class)
+# 2) Stores uploaded image in Firebase Storage; saves signed URL in Firestore so past bikes show a preview
+# 3) Sidebar "Reset" controls: clear session/state and delete ALL Firestore records
+# 4) Keeps OpenAI v1 SDK (no proxies), Firestore auth flow, Altair guards, single set_page_config
+# 5) Backward compatible with existing fields; safe when tools omit fields
 
 import os
 import json
@@ -10,7 +12,7 @@ import base64
 import random
 import tempfile
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # --- Streamlit must be the first UI call ---
 import streamlit as st
@@ -29,10 +31,10 @@ _http = httpx.Client(timeout=60, trust_env=False)
 client = OpenAI(api_key=st.secrets.get("OPENAI_KEY", ""), http_client=_http)
 
 # --------------------------------------------------------------------------------------
-# Firebase / Firestore setup — accept either TOML table or JSON string in secrets
+# Firebase / Firestore / Storage setup — secrets can be TOML table or JSON string
 # --------------------------------------------------------------------------------------
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, firestore, storage
 
 FIREBASE_BUCKET = st.secrets.get("FIREBASE_STORAGE_BUCKET", "socs-415712.appspot.com")
 
@@ -57,6 +59,7 @@ else:
     firebase_admin.get_app(name='[DEFAULT]')
 
 db = firestore.client()
+bucket = storage.bucket()  # uses default bucket from app config
 
 # --------------------------------------------------------------------------------------
 # Jinja2 system prompt (with safe fallback if template file is missing)
@@ -67,13 +70,15 @@ SYSTEM_TEMPLATE = "system_message.jinja2"
 _system_message = (
     "You are a bike analyst AI. From a single photo, call the provided tools "
     "to return exactly one label per function. Be decisive.\n\n"
-    "\u2022 brand_name: output the likely manufacturer/brand name (e.g. Trek, Giant, Gazelle).\n"
-    "\u2022 bike_brand: output a quality tier (A-type, B-type, C-type, Not specified).\n"
-    "\u2022 bike_condition_detailed: set overall condition and list concrete issues (missing/damaged parts).\n"
-    "\u2022 bike_color: output the primary color (and secondary if obvious).\n"
-    "\u2022 ebike_details: if electric, specify drive type (mid-drive/front hub/rear hub), battery location, and assist class.\n"
-    "\u2022 electric_bike: Electric vs Not Electric.\n"
-    "\u2022 bike_type, frame_type, frame_material as usual.\n"
+    "• brand_name: output the likely manufacturer/brand name (e.g. Trek, Giant, Gazelle). "
+    "If no logo/decal is readable, return 'Unknown'. Do not output a tier label here.\n"
+    "• bike_brand: (separate) quality tier (A-type/B-type/C-type/Not specified).\n"
+    "• bike_condition_detailed: set overall condition and list concrete issues (missing/damaged parts).\n"
+    "• bike_color: output the primary color (and secondary if obvious).\n"
+    "• ebike_details: if electric, specify drive type (mid-drive/front hub/rear hub), "
+    "  battery location, and assist class.\n"
+    "• electric_bike: Electric vs Not Electric.\n"
+    "• bike_type, frame_type, frame_material as usual.\n"
     "Prefer precision over caution; if unsure, choose the closest option and avoid returning multiple options."
 )
 try:
@@ -89,6 +94,7 @@ DESIRED_FIELDS = [
     'timestamp', 'file_name',
     # New fields
     'brand_name', 'bike_color', 'condition_notes', 'ebike_drive', 'battery_location', 'assist_class',
+    'image_url',
     # Existing fields
     'bike_brand', 'bike_condition', 'electric_bike', 'bike_type', 'frame_type', 'frame_material', 'goal'
 ]
@@ -100,6 +106,19 @@ import xlsxwriter  # noqa: F401  (used by Excel writer engine)
 
 def encode_image(img_bytes: bytes) -> str:
     return base64.b64encode(img_bytes).decode("utf-8")
+
+
+def upload_image_and_get_url(image_bytes: bytes, file_name: str) -> str | None:
+    """Upload to Firebase Storage and return a signed URL (valid 7 days)."""
+    try:
+        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        blob = bucket.blob(f'uploads/{ts}_{file_name}')
+        blob.upload_from_string(image_bytes, content_type='image/jpeg')
+        url = blob.generate_signed_url(expiration=timedelta(days=7), method='GET')
+        return url
+    except Exception as e:
+        st.warning(f"Couldn't store image in bucket: {e}")
+        return None
 
 
 def image_name_exists_in_firestore(image_name: str) -> bool:
@@ -167,6 +186,26 @@ def delete_bike_data_from_firestore(image_name: str) -> None:
             doc.reference.delete()
     except Exception as e:
         st.error(f"Failed to delete bike data from database: {e}", icon='🚨')
+
+
+def delete_collection(coll_name: str, batch_size: int = 200) -> int:
+    """Dangerous: delete every document in a collection. Returns number deleted."""
+    try:
+        coll_ref = db.collection(coll_name)
+        deleted = 0
+        while True:
+            docs = coll_ref.limit(batch_size).stream()
+            chunk = 0
+            for doc in docs:
+                doc.reference.delete()
+                deleted += 1
+                chunk += 1
+            if chunk == 0:
+                break
+        return deleted
+    except Exception as e:
+        st.error(f"Failed to delete collection '{coll_name}': {e}")
+        return 0
 
 # --------------------------------------------------------------------------------------
 # Function calling schema for the model (extended)
@@ -467,22 +506,54 @@ def call_gpt_model(base64_image: str, image_name: str) -> dict:
 # UI helpers
 # --------------------------------------------------------------------------------------
 
-def display_results(res_json: dict, name: str, goal: str) -> None:
+def display_results(res_json: dict, name: str, goal: str, image_bytes: bytes | None = None) -> None:
+    # Upload image & attach URL
+    if image_bytes:
+        url = upload_image_and_get_url(image_bytes, name)
+        if url:
+            res_json['image_url'] = url
+
     res_json['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     res_json['file_name'] = name
     res_json['goal'] = goal
     df = pd.DataFrame([res_json]).T
     df.columns = ['Details']
+
+    if res_json.get('image_url'):
+        with st.expander(f"Show photo for {name}"):
+            st.image(res_json['image_url'], caption=name, use_column_width=True)
+
     st.table(df)
     add_bike_data_to_firestore(res_json)
 
 
-def handle_regeneration(name: str, b64: str, goal: str) -> None:
+def handle_regeneration(name: str, b64: str, goal: str, image_bytes: bytes | None) -> None:
     delete_bike_data_from_firestore(name)
     new = call_gpt_model(b64, name)
     if new:
-        display_results(new, name, goal)
+        display_results(new, name, goal, image_bytes)
     st.session_state.regenerate[name] = False
+
+# --------------------------------------------------------------------------------------
+# Sidebar — Reset / Admin
+# --------------------------------------------------------------------------------------
+with st.sidebar:
+    st.subheader("Reset / Admin")
+    if st.button("↻ Clear session/state"):
+        try:
+            st.cache_data.clear()  # safe even if unused
+        except Exception:
+            pass
+        for k in list(st.session_state.keys()):
+            del st.session_state[k]
+        st.success("Cleared session state and caches. Reload the page.", icon="✅")
+
+    st.markdown("---")
+    st.markdown("**Danger zone**")
+    confirm = st.checkbox("I understand this will permanently delete ALL records.")
+    if st.button("🗑️ Delete ALL `bike_data` records", disabled=not confirm):
+        n = delete_collection("bike_data", batch_size=200)
+        st.success(f"Deleted {n} documents from 'bike_data'.", icon="✅")
 
 # --------------------------------------------------------------------------------------
 # Top of page content
@@ -512,7 +583,8 @@ if uploaded:
         cols = st.columns(3)
         for col, file in zip(cols, uploaded[i:i+3]):
             with col:
-                b64 = encode_image(file.getvalue())
+                img_bytes = file.getvalue()
+                b64 = encode_image(img_bytes)
                 fname = file.name
 
                 # Goal selector with DB update
@@ -541,13 +613,13 @@ if uploaded:
                 # Analyze or show existing
                 if not image_name_exists_in_firestore(fname) or st.session_state.regenerate.get(fname, False):
                     if st.session_state.regenerate.get(fname, False):
-                        handle_regeneration(fname, b64, goal)
+                        handle_regeneration(fname, b64, goal, img_bytes)
                     else:
                         response = call_gpt_model(b64, fname)
                         with st.expander(f"Show photo for {fname}"):
-                            st.image(file.getvalue(), caption=fname, use_column_width=True)
+                            st.image(img_bytes, caption=fname, use_column_width=True)
                         if response:
-                            display_results(response, fname, goal)
+                            display_results(response, fname, goal, img_bytes)
 
                     st.button(
                         f'🔄 Regenerate for {fname}',
@@ -560,6 +632,9 @@ if uploaded:
                         st.warning(f"Data for '{fname}' already exists in the database.", icon='⚠️')
                         tbl = existing.T
                         tbl.columns = ['Details']
+                        if 'image_url' in existing.columns and pd.notna(existing.loc[0, 'image_url']):
+                            with st.expander(f"Show stored photo for {fname}"):
+                                st.image(existing.loc[0, 'image_url'], caption=fname, use_column_width=True)
                         st.table(tbl)
                     st.button(
                         f'🔄 Regenerate for {fname}',
@@ -575,7 +650,7 @@ else:
             This tool helps you analyze various features of bicycles using photos. Follow these steps:
 
             1. 📤 Click the “Choose your photos” button to upload one or more bicycle images.
-            2. ⏳ Wait for the AI to analyze each photo and identify features like brand, condition, color, and e‑bike specifics.
+            2. ⏳ Wait for the AI to analyze each photo and identify features like brand, condition, color, and e-bike specifics.
             3. 👀 Review the results displayed under each image.
 
             **Note:** Make sure your photos are clear and high-quality for the best results.
@@ -583,10 +658,7 @@ else:
         )
         if os.path.isdir("example_images"):
             imgs = [f for f in os.listdir("example_images") if not f.startswith('.')]
-            if len(imgs) >= 4:
-                sample = random.sample(imgs, 4)
-            else:
-                sample = imgs
+            sample = random.sample(imgs, min(4, len(imgs))) if imgs else []
             cols = st.columns(max(1, len(sample)))
             for idx, col in enumerate(cols):
                 if idx < len(sample):
@@ -713,10 +785,10 @@ else:
         st.write("Bike Colors")
         plot_pie_chart(df_all, 'bike_color')
     with c7:
-        st.write("E‑bike Drive Type")
+        st.write("E-bike Drive Type")
         plot_pie_chart(df_all, 'ebike_drive')
 
-    st.markdown('<hr style=\"border:1px solid #F8A488;\">', unsafe_allow_html=True)
+    st.markdown('<hr style="border:1px solid #F8A488;">', unsafe_allow_html=True)
 
     logos = [
         'logo/logo_werecircle.png',
