@@ -72,7 +72,6 @@ _system_message = (
     "to return exactly one label per function. Be decisive.\n\n"
     "• brand_name: output the likely manufacturer/brand name (e.g. Trek, Giant, Gazelle). "
     "If no logo/decal is readable, return 'Unknown'. Do not output a tier label here.\n"
-    "• bike_brand: (separate) quality tier (A-type/B-type/C-type/Not specified).\n"
     "• bike_condition_detailed: set overall condition and list concrete issues (missing/damaged parts).\n"
     "• bike_color: output the primary color (and secondary if obvious).\n"
     "• ebike_details: if electric, specify drive type (mid-drive/front hub/rear hub), "
