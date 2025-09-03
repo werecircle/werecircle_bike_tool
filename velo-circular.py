@@ -1,6 +1,8 @@
-# --- Bike Analysis Tool (Patched) ---
-# Hardened for: OpenAI v1 SDK (no proxies), Firestore auth, Altair guards,
-# single set_page_config, resilient secrets handling, and safer dashboard.
+# --- Bike Analysis Tool (Enhanced) ---
+# Upgrades:
+# 1) Adds brand_name, bike_color, detailed condition notes, and e‑bike specifics (drive + battery + assist class)
+# 2) Keeps OpenAI v1 SDK (no proxies), Firestore auth flow, Altair guards, single set_page_config
+# 3) Backward compatible with existing fields; safe when tools omit fields
 
 import os
 import json
@@ -63,9 +65,16 @@ from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
 SYSTEM_TEMPLATE = "system_message.jinja2"
 _system_message = (
-    "You are a bike analyst AI. Extract brand tier, condition, e-bike flag, "
-    "bike type, frame type, and frame material from a single photo, returning "
-    "exactly one label per tool function."
+    "You are a bike analyst AI. From a single photo, call the provided tools "
+    "to return exactly one label per function. Be decisive.\n\n"
+    "\u2022 brand_name: output the likely manufacturer/brand name (e.g. Trek, Giant, Gazelle).\n"
+    "\u2022 bike_brand: output a quality tier (A-type, B-type, C-type, Not specified).\n"
+    "\u2022 bike_condition_detailed: set overall condition and list concrete issues (missing/damaged parts).\n"
+    "\u2022 bike_color: output the primary color (and secondary if obvious).\n"
+    "\u2022 ebike_details: if electric, specify drive type (mid-drive/front hub/rear hub), battery location, and assist class.\n"
+    "\u2022 electric_bike: Electric vs Not Electric.\n"
+    "\u2022 bike_type, frame_type, frame_material as usual.\n"
+    "Prefer precision over caution; if unsure, choose the closest option and avoid returning multiple options."
 )
 try:
     env = Environment(loader=FileSystemLoader("."))
@@ -77,8 +86,11 @@ except TemplateNotFound:
 # Helper utilities
 # --------------------------------------------------------------------------------------
 DESIRED_FIELDS = [
-    'timestamp', 'file_name', 'bike_brand', 'bike_condition',
-    'electric_bike', 'bike_type', 'frame_type', 'frame_material', 'goal'
+    'timestamp', 'file_name',
+    # New fields
+    'brand_name', 'bike_color', 'condition_notes', 'ebike_drive', 'battery_location', 'assist_class',
+    # Existing fields
+    'bike_brand', 'bike_condition', 'electric_bike', 'bike_type', 'frame_type', 'frame_material', 'goal'
 ]
 
 import pandas as pd
@@ -157,9 +169,26 @@ def delete_bike_data_from_firestore(image_name: str) -> None:
         st.error(f"Failed to delete bike data from database: {e}", icon='🚨')
 
 # --------------------------------------------------------------------------------------
-# Function calling schema for the model
+# Function calling schema for the model (extended)
 # --------------------------------------------------------------------------------------
 TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "brand_name",
+            "description": "Identify the likely manufacturer/brand name visible on the bike (e.g., Trek, Giant, Gazelle).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "brand": {
+                        "type": "string",
+                        "description": "Single brand name; 'Unknown' if unclear."
+                    }
+                },
+                "required": ["brand"]
+            }
+        }
+    },
     {
         "type": "function",
         "function": {
@@ -183,17 +212,81 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "bike_condition",
-            "description": "Return exactly one: Good condition, Moderate condition, Poor condition, Unusable.",
+            "name": "bike_condition_detailed",
+            "description": "Set overall condition and list concrete issues you can see (missing/damaged parts).",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "Good condition": {"type": "boolean"},
-                    "Moderate condition": {"type": "boolean"},
-                    "Poor condition": {"type": "boolean"},
-                    "Unusable": {"type": "boolean"}
+                    "overall_condition": {
+                        "type": "string",
+                        "enum": ["Good condition", "Moderate condition", "Poor condition", "Unusable"]
+                    },
+                    "issues": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "Handlebar missing", "Saddle missing", "Front wheel missing", "Rear wheel missing",
+                                "Flat tire", "Bent rim", "Broken chain", "Derailleur bent", "Shifter missing",
+                                "Brake lever missing", "Brake cable cut", "Fork damaged", "Frame cracked",
+                                "Pedal missing", "Crank damaged", "Lights missing", "Severe rust", "Paint scratched",
+                                "Battery missing", "Motor wiring damaged"
+                            ]
+                        }
+                    }
                 },
-                "required": ["Good condition", "Moderate condition", "Poor condition", "Unusable"]
+                "required": ["overall_condition"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "bike_color",
+            "description": "Identify the bike's primary color (and secondary if obvious).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "primary": {
+                        "type": "string",
+                        "enum": [
+                            "Black", "White", "Gray", "Silver", "Red", "Blue", "Green",
+                            "Yellow", "Orange", "Brown", "Purple", "Pink", "Other"
+                        ]
+                    },
+                    "secondary": {"type": "string"}
+                },
+                "required": ["primary"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ebike_details",
+            "description": "If electric, specify drive type, battery location, and assist class.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "drive_type": {
+                        "type": "string",
+                        "enum": ["Mid-drive", "Front hub", "Rear hub", "Unknown"]
+                    },
+                    "battery_location": {
+                        "type": "string",
+                        "enum": [
+                            "Downtube", "Seat tube", "Rear rack", "Frame bag/pannier",
+                            "Integrated in frame", "Missing", "Unknown"
+                        ]
+                    },
+                    "assist_class": {
+                        "type": "string",
+                        "enum": [
+                            "Pedelec (25 km/h)", "Speed pedelec (45 km/h)", "Throttle e-bike", "Unknown"
+                        ]
+                    }
+                },
+                "required": []
             }
         }
     },
@@ -277,12 +370,19 @@ TOOLS = [
                 "required": ["Aluminium", "Carbon", "Steel"]
             }
         }
-    }
+    },
 ]
 
 # --------------------------------------------------------------------------------------
 # GPT call
 # --------------------------------------------------------------------------------------
+
+def _first_true_key(args: dict, default: str = "Not specified") -> str:
+    for k, v in args.items():
+        if v:
+            return k
+    return default
+
 
 def call_gpt_model(base64_image: str, image_name: str) -> dict:
     try:
@@ -294,7 +394,7 @@ def call_gpt_model(base64_image: str, image_name: str) -> dict:
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": "Describe the bike’s features in the image."},
+                            {"type": "text", "text": "Describe the bike’s features in the image and call the tools accordingly."},
                             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}},
                         ],
                     },
@@ -302,32 +402,62 @@ def call_gpt_model(base64_image: str, image_name: str) -> dict:
                 tools=TOOLS,
                 tool_choice="required",
                 temperature=0,
-                max_tokens=300,
+                max_tokens=400,
             )
             msg = response.choices[0].message
+
             result: dict = {}
             if hasattr(msg, "tool_calls") and msg.tool_calls:
                 for tool_call in msg.tool_calls:
                     fn = tool_call.function.name
-                    args = json.loads(tool_call.function.arguments)
-                    # Ensure exactly one label per tool
-                    if fn == 'bike_brand':
-                        if not any(args.values()):
-                            result[fn] = 'Not specified'
+                    args = json.loads(tool_call.function.arguments or "{}")
+
+                    if fn == 'brand_name':
+                        result['brand_name'] = (args.get('brand') or 'Unknown').strip()
+
+                    elif fn == 'bike_brand':
+                        result['bike_brand'] = _first_true_key(args, default='Not specified')
+
+                    elif fn == 'bike_condition_detailed':
+                        oc = args.get('overall_condition') or 'Moderate condition'
+                        issues = args.get('issues') or []
+                        if isinstance(issues, list):
+                            notes = ", ".join(sorted(set([str(x) for x in issues if x]))) or "None"
                         else:
-                            for key, val in args.items():
-                                if val:
-                                    result[fn] = key
-                                    break
-                    else:
-                        for key, val in args.items():
-                            if val:
-                                result[fn] = key
-                                break
+                            notes = str(issues)
+                        result['bike_condition'] = oc
+                        result['condition_notes'] = notes
+
+                    elif fn == 'bike_color':
+                        prim = args.get('primary') or 'Other'
+                        sec = args.get('secondary')
+                        result['bike_color'] = f"{prim}{f' + {sec}' if sec else ''}"
+
+                    elif fn == 'ebike_details':
+                        if 'drive_type' in args:
+                            result['ebike_drive'] = args['drive_type'] or 'Unknown'
+                        if 'battery_location' in args:
+                            result['battery_location'] = args['battery_location'] or 'Unknown'
+                        if 'assist_class' in args:
+                            result['assist_class'] = args['assist_class'] or 'Unknown'
+
+                    elif fn == 'electric_bike':
+                        result['electric_bike'] = _first_true_key(args, default='Not Electric')
+
+                    elif fn == 'bike_type':
+                        result['bike_type'] = _first_true_key(args)
+
+                    elif fn == 'frame_type':
+                        result['frame_type'] = _first_true_key(args)
+
+                    elif fn == 'frame_material':
+                        result['frame_material'] = _first_true_key(args)
+
             else:
                 # Fallback for debugging when the model doesn't call tools
                 st.warning("Model replied without a tool call; showing raw text for debugging.")
                 st.code(getattr(msg, "content", ""))
+
             return result
     except Exception as e:
         st.error(f"OpenAI error: {e}", icon='🚨')
@@ -445,7 +575,7 @@ else:
             This tool helps you analyze various features of bicycles using photos. Follow these steps:
 
             1. 📤 Click the “Choose your photos” button to upload one or more bicycle images.
-            2. ⏳ Wait for the AI to analyze each photo and identify features like brand, condition, and type.
+            2. ⏳ Wait for the AI to analyze each photo and identify features like brand, condition, color, and e‑bike specifics.
             3. 👀 Review the results displayed under each image.
 
             **Note:** Make sure your photos are clear and high-quality for the best results.
@@ -523,6 +653,29 @@ else:
         )
         st.altair_chart(pie, use_container_width=True)
 
+    def plot_topn_bar(data: pd.DataFrame, column: str, n: int = 10):
+        if data is None or data.empty or column not in data.columns:
+            st.info(f"No data for '{column}' yet.")
+            return
+        cd = (
+            data[column]
+            .dropna()
+            .astype(str)
+            .value_counts()
+            .head(n)
+            .rename_axis(column)
+            .reset_index(name="Count")
+        )
+        if cd.empty:
+            st.info(f"No data for '{column}' yet.")
+            return
+        chart = alt.Chart(cd).mark_bar().encode(
+            x=alt.X('Count:Q'),
+            y=alt.Y(f'{column}:N', sort='-x'),
+            tooltip=[column, 'Count']
+        )
+        st.altair_chart(chart, use_container_width=True)
+
     st.subheader("Bike Data Dashboard")
     df_all = fetch_all_bike_data_from_firestore()
     if not df_all.empty and 'timestamp' in df_all.columns:
@@ -550,6 +703,20 @@ else:
         plot_pie_chart(df_all, 'bike_condition')
 
     st.markdown('<hr style="border:1px solid #F8A488;">', unsafe_allow_html=True)
+
+    # New mini-dashboard for upgrades
+    c5, c6, c7 = st.columns(3)
+    with c5:
+        st.write("Top Brands (detected)")
+        plot_topn_bar(df_all, 'brand_name', n=10)
+    with c6:
+        st.write("Bike Colors")
+        plot_pie_chart(df_all, 'bike_color')
+    with c7:
+        st.write("E‑bike Drive Type")
+        plot_pie_chart(df_all, 'ebike_drive')
+
+    st.markdown('<hr style=\"border:1px solid #F8A488;\">', unsafe_allow_html=True)
 
     logos = [
         'logo/logo_werecircle.png',
