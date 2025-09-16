@@ -69,16 +69,16 @@ from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 SYSTEM_TEMPLATE = "system_message.jinja2"
 _system_message = (
     "You are a bike analyst AI. From a single photo, call the provided tools "
-    "to return exactly one label per function. Be decisive.\n\n"
-    "• brand_name: output the likely manufacturer/brand name (e.g. Trek, Giant, Gazelle). "
-    "If no logo/decal is readable, return 'Unknown'. Do not output a tier label here.\n"
-    "• bike_condition_detailed: set overall condition and list concrete issues (missing/damaged parts).\n"
-    "• bike_color: output the primary color (and secondary if obvious).\n"
-    "• ebike_details: if electric, specify drive type (mid-drive/front hub/rear hub), "
-    "  battery location, and assist class.\n"
-    "• electric_bike: Electric vs Not Electric.\n"
+    "to return exactly one label per function. Be decisive and complete in your answers.\n\n"
+    "• brand_name: Output the definite manufacturer/brand name that can be seen on the frame of the bike (e.g. Trek, Giant, Gazelle). "
+    "If no logo/decal is readable, return 'Unknown brand'. Do not output a tier label here.\n"
+    "• bike_condition_details: set the overall condition of the bike and list any concrete issues (missing/damaged parts), e.g; If the saddle is missing state 'Missing saddle', if there is light surface rust state 'Light rust', if the lights are complete on the bike do not mention antything as it is assumed that they re functioning correctly, if the chain is missing state 'Missing chain'.\n"
+    "• bike_color: output the primary color (and secondary if obvious) of the bike.\n"
+    "• electric_bike: Stata whether the bike is Electric vs Not Electric.\n"
+    "• ebike_details: if the bike is electric, specify the drive type (mid-drive/front hub/rear hub), "
+    "  battery location (Rear mount / frame mount etc), and assist class (speed pedelec / pedal assist).\n"
     "• bike_type, frame_type, frame_material as usual.\n"
-    "Prefer precision over caution; if unsure, choose the closest option and avoid returning multiple options."
+    "Prefer precision and accuracy of your answers over caution; if you are unsure, do not hallucinate and create assumptions. If you really cannot distinguish an option you should tell the truth and return 'Unknown'. return multiple options where necessary (e.g. the bike condition requires multiple answers), but do not return excessive options where uneccesary."
 )
 try:
     env = Environment(loader=FileSystemLoader("."))
@@ -214,7 +214,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "brand_name",
-            "description": "Identify the likely manufacturer/brand name visible on the bike (e.g., Trek, Giant, Gazelle).",
+            "description": "Output the definite manufacturer/brand name that can be seen on the frame of the bike (e.g. Trek, Giant, Gazelle). If no logo/decal is readable, return 'Unknown brand'. Do not output a tier label here.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -227,48 +227,29 @@ TOOLS = [
             }
         }
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "bike_brand",
-            "description": (
-                "Determine the brand quality tier: one of A-type (high-end), B-type (mid), "
-                "C-type (low), or Not specified."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "A-type": {"type": "boolean"},
-                    "B-type": {"type": "boolean"},
-                    "C-type": {"type": "boolean"},
-                    "Not specified": {"type": "boolean"}
-                },
-                "required": ["A-type", "B-type", "C-type", "Not specified"]
-            }
-        }
-    },
+},
     {
         "type": "function",
         "function": {
             "name": "bike_condition_detailed",
-            "description": "Set overall condition and list concrete issues you can see (missing/damaged parts).",
+            "description": "Set the overall condition of the bike and list any concrete issues (missing/damaged parts), e.g; If the saddle is missing state 'Missing saddle', if there is light surface rust state 'Light rust', if the lights are complete on the bike do not mention antything as it is assumed that they re functioning correctly, if the chain is missing state 'Missing chain'.\n"
             "parameters": {
                 "type": "object",
                 "properties": {
                     "overall_condition": {
                         "type": "string",
-                        "enum": ["Good condition", "Moderate condition", "Poor condition", "Unusable"]
+                        "enum": ["Perfect Condition", "Great Condition", "Good condition", "Moderate condition", "Poor condition", "Unusable"]
                     },
                     "issues": {
                         "type": "array",
                         "items": {
                             "type": "string",
                             "enum": [
-                                "Handlebar missing", "Saddle missing", "Front wheel missing", "Rear wheel missing",
+                                "Chain Missing", "Brake cable missing", "Handlebar missing", "Saddle missing", "Front wheel missing", "Rear wheel missing",
                                 "Flat tire", "Bent rim", "Broken chain", "Derailleur bent", "Shifter missing",
                                 "Brake lever missing", "Brake cable cut", "Fork damaged", "Frame cracked",
                                 "Pedal missing", "Crank damaged", "Lights missing", "Severe rust", "Paint scratched",
-                                "Battery missing", "Motor wiring damaged"
+                                "Battery missing", "Electrics motor missing", "Motor wiring damaged"
                             ]
                         }
                     }
@@ -281,7 +262,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "bike_color",
-            "description": "Identify the bike's primary color (and secondary if obvious).",
+            "description": "output the primary color (and secondary if obvious) of the bike.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -289,7 +270,7 @@ TOOLS = [
                         "type": "string",
                         "enum": [
                             "Black", "White", "Gray", "Silver", "Red", "Blue", "Green",
-                            "Yellow", "Orange", "Brown", "Purple", "Pink", "Other"
+                            "Yellow", "Orange", "Brown", "Purple", "Pink", "Multicolour", "Other"
                         ]
                     },
                     "secondary": {"type": "string"}
@@ -302,13 +283,13 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "ebike_details",
-            "description": "If electric, specify drive type, battery location, and assist class.",
+            "description": "if the bike is electric, specify the; drive type (mid-drive/front hub/rear hub), battery location (Rear mount / frame mount etc), and assist class (speed pedelec / pedal assist).",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "drive_type": {
                         "type": "string",
-                        "enum": ["Mid-drive", "Front hub", "Rear hub", "Unknown"]
+                        "enum": ["Mid-drive", "Front hub", "Rear hub", "Unknown drive type"]
                     },
                     "battery_location": {
                         "type": "string",
@@ -324,7 +305,7 @@ TOOLS = [
                         ]
                     }
                 },
-                "required": []
+                "required": ["drive_type", "battery_location", "assist_class"]
             }
         }
     },
@@ -403,7 +384,8 @@ TOOLS = [
                 "properties": {
                     "Aluminium": {"type": "boolean"},
                     "Carbon": {"type": "boolean"},
-                    "Steel": {"type": "boolean"}
+                    "Steel": {"type": "boolean"},
+                    "Unknown frame material": {"type": "boolean"}
                 },
                 "required": ["Aluminium", "Carbon", "Steel"]
             }
