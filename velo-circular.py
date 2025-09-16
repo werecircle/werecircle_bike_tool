@@ -227,7 +227,6 @@ TOOLS = [
             }
         }
     },
-},
     {
         "type": "function",
         "function": {
