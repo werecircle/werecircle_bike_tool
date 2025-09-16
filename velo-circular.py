@@ -231,7 +231,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "bike_condition_detailed",
-            "description": "Set the overall condition of the bike and list any concrete issues (missing/damaged parts), e.g; If the saddle is missing state 'Missing saddle', if there is light surface rust state 'Light rust', if the lights are complete on the bike do not mention antything as it is assumed that they re functioning correctly, if the chain is missing state 'Missing chain'.\n"
+            "description": "Set the overall condition of the bike and list any concrete issues (missing/damaged parts), e.g; If the saddle is missing state 'Missing saddle', if there is light surface rust state 'Light rust', if the lights are complete on the bike do not mention antything as it is assumed that they re functioning correctly, if the chain is missing state 'Missing chain'.\n",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -386,7 +386,7 @@ TOOLS = [
                     "Steel": {"type": "boolean"},
                     "Unknown frame material": {"type": "boolean"}
                 },
-                "required": ["Aluminium", "Carbon", "Steel"]
+                "required": ["Aluminium", "Carbon", "Steel","Unknown frame material"]
             }
         }
     },
