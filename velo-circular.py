@@ -74,7 +74,7 @@ _system_message = (
     "If no logo/decal is readable, return 'Unknown brand'. Do not output a tier label here.\n"
     "• bike_condition_details: set the overall condition of the bike and list any concrete issues (missing/damaged parts), e.g; If the saddle is missing state 'Missing saddle', if there is light surface rust state 'Light rust', if the lights are complete on the bike do not mention antything as it is assumed that they re functioning correctly, if the chain is missing state 'Missing chain'.\n"
     "• bike_color: output the primary color (and secondary if obvious) of the bike.\n"
-    "• electric_bike: Stata whether the bike is Electric vs Not Electric.\n"
+    "• electric_bike: State whether the bike is Electric vs Not Electric.\n"
     "• ebike_details: if the bike is electric, specify the drive type (mid-drive/front hub/rear hub), "
     "  battery location (Rear mount / frame mount etc), and assist class (speed pedelec / pedal assist).\n"
     "• bike_type, frame_type, frame_material as usual.\n"
