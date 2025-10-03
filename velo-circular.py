@@ -24,7 +24,7 @@ st.set_page_config(page_title="Bike Analysis Tool", layout="wide")
 import httpx
 from openai import OpenAI
 
-MODEL_NAME = st.secrets.get("OPENAI_MODEL", "gpt-4o")  # default vision-capable
+MODEL_NAME = st.secrets.get("OPENAI_MODEL", "gpt-5 mini")  # default vision-capable
 
 # httpx: trust_env=False prevents using HTTP(S)_PROXY if present in the environment
 _http = httpx.Client(timeout=60, trust_env=False)
