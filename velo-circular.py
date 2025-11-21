@@ -24,11 +24,12 @@ st.set_page_config(page_title="Bike Analysis Tool", layout="wide")
 import httpx
 from openai import OpenAI
 
-MODEL_NAME = st.secrets.get("OPENAI_MODEL", "gpt-4o")  # default vision-capable
+MODEL_NAME = st.secrets.get("OPENAI_MODEL", "gpt-5.1")  # default vision-capable
 
 # httpx: trust_env=False prevents using HTTP(S)_PROXY if present in the environment
 _http = httpx.Client(timeout=60, trust_env=False)
 client = OpenAI(api_key=st.secrets.get("OPENAI_KEY", ""), http_client=_http)
+
 
 # --------------------------------------------------------------------------------------
 # Firebase / Firestore / Storage setup — secrets can be TOML table or JSON string
